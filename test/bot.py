@@ -68,7 +68,7 @@ def run_dungeon_bot():
     send_telegram_message(f"🤖 Бот начал работу! ⏰ {timestamp}")
     
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True) # На сервере можно поставить True (без графического окна)
+        browser = p.chromium.launch(headless=True)
         context = browser.new_context()
 
         # Загружаем куки (работает как локально, так и на GitHub Actions)
@@ -89,7 +89,9 @@ def run_dungeon_bot():
             page.goto("https://remanga.org/murim-cards#/map", timeout=60000)
             human_sleep(5, 7)
         except Exception as e:
-            print(f"Не удалось открыть страницу: {e}")
+            error_msg = f"❌ Не удалось открыть страницу: {e}"
+            print(error_msg)
+            send_telegram_message(error_msg)
             browser.close()
             return
         
