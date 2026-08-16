@@ -36,7 +36,7 @@ jobs:
       - name: Установка зависимостей
         run: |
           python -m pip install --upgrade pip
-          pip install playwright schedule
+          pip install -r requirements.txt
       
       # 5. Установка браузеров Playwright
       - name: Установка браузеров Playwright
