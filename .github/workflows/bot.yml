@@ -1,0 +1,60 @@
+name: Запуск бота по расписанию
+
+on:
+  # Запуск по расписанию (каждый день в 10:00 UTC)
+  schedule:
+    - cron: '0 10 * * *'
+  
+  # Ручной запуск через кнопку "Run workflow" на GitHub
+  workflow_dispatch:
+
+jobs:
+  run_bot:
+    runs-on: ubuntu-latest
+    
+    steps:
+      # 1. Checkout кода из репозитория
+      - name: Checkout кода
+        uses: actions/checkout@v4
+      
+      # 2. Установка Python
+      - name: Установка Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      # 3. Кеширование зависимостей
+      - name: Кеширование pip
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+      
+      # 4. Установка зависимостей Python
+      - name: Установка зависимостей
+        run: |
+          python -m pip install --upgrade pip
+          pip install playwright schedule
+      
+      # 5. Установка браузеров Playwright
+      - name: Установка браузеров Playwright
+        run: playwright install
+      
+      # 6. Создание cookies.txt из GitHub Secrets
+      - name: Создание cookies.txt
+        env:
+          COOKIES_CONTENT: ${{ secrets.COOKIES_TXT }}
+        run: |
+          mkdir -p test
+          echo "$COOKIES_CONTENT" > test/cookies.txt
+      
+      # 7. Запуск бота
+      - name: Запуск бота
+        run: python test/bot.py
+      
+      # 8. Логирование результата
+      - name: Статус выполнения
+        if: always()
+        run: echo "Бот выполнил работу в ${{ job.status }}"
