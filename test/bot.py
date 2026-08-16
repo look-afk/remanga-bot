@@ -4,6 +4,22 @@ import schedule
 import os
 from pathlib import Path
 from playwright.sync_api import sync_playwright
+import requests
+
+def send_telegram_message(message):
+    """Отправляет сообщение в Telegram"""
+    token = os.getenv('TELEGRAM_BOT_TOKEN')
+    chat_id = os.getenv('TELEGRAM_CHAT_ID')
+    
+    if not token or not chat_id:
+        return  # Если нет токена/chat_id, пропускаем
+    
+    try:
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        data = {"chat_id": chat_id, "text": message}
+        requests.post(url, data=data, timeout=10)
+    except Exception as e:
+        print(f"Ошибка отправки в Telegram: {e}")
 
 def human_sleep(min_sec=2, max_sec=4):
     """Случайная пауза для имитации человека"""
@@ -47,7 +63,9 @@ def parse_netscape_cookies(file_path):
     return cookies
 
 def run_dungeon_bot():
-    print(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S M')}] Запуск запланированной задачи фарма катакомб...")
+    timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
+    print(f"\n[{timestamp}] Запуск запланированной задачи фарма катакомб...")
+    send_telegram_message(f"🤖 Бот начал работу! ⏰ {timestamp}")
     
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True) # На сервере можно поставить True (без графического окна)
@@ -59,7 +77,9 @@ def run_dungeon_bot():
             netscape_cookies = parse_netscape_cookies(cookies_path)
             context.add_cookies(netscape_cookies)
         except Exception as e:
-            print(f"Ошибка при загрузке cookies.txt: {e}")
+            error_msg = f"❌ Ошибка при загрузке cookies.txt: {e}"
+            print(error_msg)
+            send_telegram_message(error_msg)
             browser.close()
             return
 
@@ -135,6 +155,7 @@ def run_dungeon_bot():
 
         print("Фарм завершен. Закрываю браузер.")
         browser.close()
+        send_telegram_message(f"✅ Фарм завершен! Циклов: {run_count}")
 
 def schedule_job():
     """Выбирает случайный час из [13, 14, 15] и ставит задачу на этот час"""
