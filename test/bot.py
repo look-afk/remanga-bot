@@ -5,6 +5,10 @@ import os
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 import requests
+from dotenv import load_dotenv
+
+# Загружаем переменные окружения для локального запуска
+load_dotenv()
 
 def send_telegram_message(message):
     """Отправляет сообщение в Telegram"""
@@ -66,6 +70,7 @@ def run_dungeon_bot():
     send_telegram_message(f"🤖 Бот начал работу! ⏰ {timestamp}")
     
     with sync_playwright() as p:
+        # Для локального теста поставить headless=False, чтобы видеть браузер
         browser = p.chromium.launch(headless=True)
         context = browser.new_context()
 
@@ -107,27 +112,22 @@ def run_dungeon_bot():
         
         while True:
             try:
-                print(f"--- Запуск цикла прохода №{run_count} ---")
+                print(f"\n--- Запуск цикла прохода №{run_count} ---")
                 
-                # Ищем маркеры по классу font-kanji (как на вашем скриншоте)
-                marker_selector = 'span.font-kanji'
-                page.wait_for_selector(marker_selector, timeout=20000)
-                markers = page.locator(marker_selector)
+                # 1. Ищем элемент, содержащий строго иероглиф 寺
+                kanji_element = page.locator('span.font-kanji', has_text='寺')
+                kanji_element.first.wait_for(state="visible", timeout=20000)
                 
-                count = markers.count()
-                print(f"Найдено маркеров на карте: {count}")
-                
-                if count > 3:
-                    # Кликаем на 4-й маркер (или можно кликнуть .first, если нужен первый)
-                    markers.nth(3).click()
-                elif count > 0:
-                    markers.first.click()
+                if kanji_element.count() > 0:
+                    kanji_element.first.click()
+                    print("✅ Успешно кликнул по иероглифу 寺!")
                 else:
-                    print("Маркеры на карте не найдены.")
+                    print("Иероглиф 寺 на карте не найден.")
                     break 
                 
                 human_sleep(2, 3)
 
+                # 2. Нажимаем кнопку прохода («ПРОЙТИ СНОВА» или аналогичные)
                 pass_button = page.locator('text=ПРОЙТИ СНОВА')
                 try:
                     pass_button.wait_for(state="visible", timeout=5000)
@@ -137,29 +137,268 @@ def run_dungeon_bot():
                         break
                     pass_button.click()
                 except Exception as ex:
-                    print(f"Энергия исчерпана или кнопка недоступна: {ex}")
-                    break
-                
-                print("Жду завершения боя...")
-                human_sleep(10, 15)
-
-                try:
-                    page.locator('text=К результатам').click(timeout=5000)
-                except:
+                    print(f"Кнопка 'ПРОЙТИ СНОВА' недоступна: {ex}")
                     break
                 
                 human_sleep(2, 3)
 
+                # 3. Нажимаем на кнопку с иероглифом 戰 (начало боя)
                 try:
-                    page.locator('button[data-sentry-source-file="pve-result-overlay.tsx"]').click(timeout=5000)
-                except:
+                    battle_btn = page.locator('text=戰')
+                    battle_btn.wait_for(state="visible", timeout=5000)
+                    battle_btn.click()
+                    print("⚔️ Нажата кнопка боя (戰)!")
+                except Exception as ex:
+                    print(f"Кнопка боя (戰) не найдена: {ex}")
+                
+                # 4. Ждем завершения боя
+                print("Жду завершения боя...")
+                human_sleep(12, 16)
+
+                # 5. Кликаем «К результатам»
+                try:
+                    page.locator('text=К результатам').click(timeout=8000)
+                    print("✅ Нажато 'К результатам'")
+                except Exception as e:
+                    print(f"Не удалось нажать 'К результатам': {e}")
+                    break
+                
+                human_sleep(2, 3)
+  # 3. Нажимаем на кнопку с иероглифом 戰 (начало боя)
+                try:
+                    battle_btn = page.locator('text=戰')
+                    battle_btn.wait_for(state="visible", timeout=5000)
+                    battle_btn.click()
+                    print("⚔️ Нажата кнопка боя (戰)!")
+                except Exception as ex:
+                    print(f"Кнопка боя (戰) не найдена: {ex}")
+                
+                # 4. Ждем завершения боя
+                print("Жду завершения боя...")
+                human_sleep(12, 16)
+
+                # 5. Кликаем «К результатам»
+                try:
+                    page.locator('text=К результатам').click(timeout=8000)
+                    print("✅ Нажато 'К результатам'")
+                except Exception as e:
+                    print(f"Не удалось нажать 'К результатам': {e}")
+                    break
+                
+                human_sleep(2, 3)
+  # 3. Нажимаем на кнопку с иероглифом 戰 (начало боя)
+                try:
+                    battle_btn = page.locator('text=戰')
+                    battle_btn.wait_for(state="visible", timeout=5000)
+                    battle_btn.click()
+                    print("⚔️ Нажата кнопка боя (戰)!")
+                except Exception as ex:
+                    print(f"Кнопка боя (戰) не найдена: {ex}")
+                
+                # 4. Ждем завершения боя
+                print("Жду завершения боя...")
+                human_sleep(12, 16)
+
+                # 5. Кликаем «К результатам»
+                try:
+                    page.locator('text=К результатам').click(timeout=8000)
+                    print("✅ Нажато 'К результатам'")
+                except Exception as e:
+                    print(f"Не удалось нажать 'К результатам': {e}")
+                    break
+                
+                human_sleep(2, 3)
+  # 3. Нажимаем на кнопку с иероглифом 戰 (начало боя)
+                try:
+                    battle_btn = page.locator('text=戰')
+                    battle_btn.wait_for(state="visible", timeout=5000)
+                    battle_btn.click()
+                    print("⚔️ Нажата кнопка боя (戰)!")
+                except Exception as ex:
+                    print(f"Кнопка боя (戰) не найдена: {ex}")
+                
+                # 4. Ждем завершения боя
+                print("Жду завершения боя...")
+                human_sleep(12, 16)
+
+                # 5. Кликаем «К результатам»
+                try:
+                    page.locator('text=К результатам').click(timeout=8000)
+                    print("✅ Нажато 'К результатам'")
+                except Exception as e:
+                    print(f"Не удалось нажать 'К результатам': {e}")
+                    break
+                
+                human_sleep(2, 3)
+  # 3. Нажимаем на кнопку с иероглифом 戰 (начало боя)
+                try:
+                    battle_btn = page.locator('text=戰')
+                    battle_btn.wait_for(state="visible", timeout=5000)
+                    battle_btn.click()
+                    print("⚔️ Нажата кнопка боя (戰)!")
+                except Exception as ex:
+                    print(f"Кнопка боя (戰) не найдена: {ex}")
+                
+                # 4. Ждем завершения боя
+                print("Жду завершения боя...")
+                human_sleep(12, 16)
+
+                # 5. Кликаем «К результатам»
+                try:
+                    page.locator('text=К результатам').click(timeout=8000)
+                    print("✅ Нажато 'К результатам'")
+                except Exception as e:
+                    print(f"Не удалось нажать 'К результатам': {e}")
+                    break
+                
+                human_sleep(2, 3)
+  # 3. Нажимаем на кнопку с иероглифом 戰 (начало боя)
+                try:
+                    battle_btn = page.locator('text=戰')
+                    battle_btn.wait_for(state="visible", timeout=5000)
+                    battle_btn.click()
+                    print("⚔️ Нажата кнопка боя (戰)!")
+                except Exception as ex:
+                    print(f"Кнопка боя (戰) не найдена: {ex}")
+                
+                # 4. Ждем завершения боя
+                print("Жду завершения боя...")
+                human_sleep(12, 16)
+
+                # 5. Кликаем «К результатам»
+                try:
+                    page.locator('text=К результатам').click(timeout=8000)
+                    print("✅ Нажато 'К результатам'")
+                except Exception as e:
+                    print(f"Не удалось нажать 'К результатам': {e}")
+                    break
+                
+                human_sleep(2, 3)
+  # 3. Нажимаем на кнопку с иероглифом 戰 (начало боя)
+                try:
+                    battle_btn = page.locator('text=戰')
+                    battle_btn.wait_for(state="visible", timeout=5000)
+                    battle_btn.click()
+                    print("⚔️ Нажата кнопка боя (戰)!")
+                except Exception as ex:
+                    print(f"Кнопка боя (戰) не найдена: {ex}")
+                
+                # 4. Ждем завершения боя
+                print("Жду завершения боя...")
+                human_sleep(12, 16)
+
+                # 5. Кликаем «К результатам»
+                try:
+                    page.locator('text=К результатам').click(timeout=8000)
+                    print("✅ Нажато 'К результатам'")
+                except Exception as e:
+                    print(f"Не удалось нажать 'К результатам': {e}")
+                    break
+                
+                human_sleep(2, 3)
+  # 3. Нажимаем на кнопку с иероглифом 戰 (начало боя)
+                try:
+                    battle_btn = page.locator('text=戰')
+                    battle_btn.wait_for(state="visible", timeout=5000)
+                    battle_btn.click()
+                    print("⚔️ Нажата кнопка боя (戰)!")
+                except Exception as ex:
+                    print(f"Кнопка боя (戰) не найдена: {ex}")
+                
+                # 4. Ждем завершения боя
+                print("Жду завершения боя...")
+                human_sleep(12, 16)
+
+                # 5. Кликаем «К результатам»
+                try:
+                    page.locator('text=К результатам').click(timeout=8000)
+                    print("✅ Нажато 'К результатам'")
+                except Exception as e:
+                    print(f"Не удалось нажать 'К результатам': {e}")
+                    break
+                
+                human_sleep(2, 3)
+  # 3. Нажимаем на кнопку с иероглифом 戰 (начало боя)
+                try:
+                    battle_btn = page.locator('text=戰')
+                    battle_btn.wait_for(state="visible", timeout=5000)
+                    battle_btn.click()
+                    print("⚔️ Нажата кнопка боя (戰)!")
+                except Exception as ex:
+                    print(f"Кнопка боя (戰) не найдена: {ex}")
+                
+                # 4. Ждем завершения боя
+                print("Жду завершения боя...")
+                human_sleep(12, 16)
+
+                # 5. Кликаем «К результатам»
+                try:
+                    page.locator('text=К результатам').click(timeout=8000)
+                    print("✅ Нажато 'К результатам'")
+                except Exception as e:
+                    print(f"Не удалось нажать 'К результатам': {e}")
+                    break
+                
+                human_sleep(2, 3)
+  # 3. Нажимаем на кнопку с иероглифом 戰 (начало боя)
+                try:
+                    battle_btn = page.locator('text=戰')
+                    battle_btn.wait_for(state="visible", timeout=5000)
+                    battle_btn.click()
+                    print("⚔️ Нажата кнопка боя (戰)!")
+                except Exception as ex:
+                    print(f"Кнопка боя (戰) не найдена: {ex}")
+                
+                # 4. Ждем завершения боя
+                print("Жду завершения боя...")
+                human_sleep(12, 16)
+
+                # 5. Кликаем «К результатам»
+                try:
+                    page.locator('text=К результатам').click(timeout=8000)
+                    print("✅ Нажато 'К результатам'")
+                except Exception as e:
+                    print(f"Не удалось нажать 'К результатам': {e}")
+                    break
+                
+                human_sleep(2, 3)
+  # 3. Нажимаем на кнопку с иероглифом 戰 (начало боя)
+                try:
+                    battle_btn = page.locator('text=戰')
+                    battle_btn.wait_for(state="visible", timeout=5000)
+                    battle_btn.click()
+                    print("⚔️ Нажата кнопка боя (戰)!")
+                except Exception as ex:
+                    print(f"Кнопка боя (戰) не найдена: {ex}")
+                
+                # 4. Ждем завершения боя
+                print("Жду завершения боя...")
+                human_sleep(12, 16)
+
+                # 5. Кликаем «К результатам»
+                try:
+                    page.locator('text=К результатам').click(timeout=8000)
+                    print("✅ Нажато 'К результатам'")
+                except Exception as e:
+                    print(f"Не удалось нажать 'К результатам': {e}")
+                    break
+                
+                human_sleep(2, 3)
+
+                # 6. Закрываем оверлей результатов, чтобы вернуться на карту для следующего круга
+                try:
+                    page.locator('button[data-sentry-source-file="pve-result-overlay.tsx"]').click(timeout=8000)
+                    print("✅ Оверлей результатов закрыт, возвращаемся на карту.")
+                except Exception as e:
+                    print(f"Не удалось закрыть оверлей результатов: {e}")
                     break
                 
                 run_count += 1
-                human_sleep(3, 5)
+                print(f"🔄 Цикл №{run_count - 1} успешно завершен. Пауза перед следующим...")
+                human_sleep(4, 6)
                 
             except Exception as e:
-                print(f"Ошибка в цикле: {e}")
+                print(f"❌ Ошибка в цикле: {e}")
                 try:
                     page.screenshot(path="error_screenshot.png")
                     print("Скриншот экрана сохранен.")
@@ -169,11 +408,11 @@ def run_dungeon_bot():
 
         print("Фарм завершен. Закрываю браузер.")
         browser.close()
-        send_telegram_message(f"✅ Фарм завершен! Циклов: {run_count}")
+        send_telegram_message(f"✅ Фарм завершен! Всего циклов: {run_count - 1}")
 
 if __name__ == "__main__":
     if 'GITHUB_ACTIONS' in os.environ:
-        print("[GitHub Actions] Запуск бота один раз...")
+        print("[GitHub Actions] Запуск бота...")
         run_dungeon_bot()
     else:
         print("[Локальный запуск] Запуск бота...")
