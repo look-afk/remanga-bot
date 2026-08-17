@@ -10,7 +10,7 @@ on:
 
 jobs:
   run_bot:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     
     steps:
       # 1. Checkout кода из репозитория
@@ -23,29 +23,17 @@ jobs:
         with:
           python-version: '3.11'
       
-      # 3. Кеширование зависимостей
-      - name: Кеширование pip
-        uses: actions/cache@v3
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-      
-      # 4. Установка зависимостей Python
+      # 3. Установка зависимостей Python
       - name: Установка зависимостей
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       
-      # 5. Исправление зависимостей Ubuntu 24.04 и установка Playwright
+      # 4. Установка браузера Playwright (на Ubuntu 22.04 пройдет без ошибок)
       - name: Установка браузеров Playwright
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libasound2t64 || true
-          playwright install --with-deps chromium
+        run: playwright install --with-deps chromium
       
-      # 6. Создание cookies.txt из GitHub Secrets
+      # 5. Создание cookies.txt из GitHub Secrets
       - name: Создание cookies.txt
         env:
           COOKIES_CONTENT: ${{ secrets.COOKIES_TXT }}
@@ -53,14 +41,14 @@ jobs:
           mkdir -p test
           echo "$COOKIES_CONTENT" > test/cookies.txt
       
-      # 7. Запуск бота
+      # 6. Запуск бота
       - name: Запуск бота
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python test/bot.py
       
-      # 8. Логирование результата
+      # 7. Логирование результата
       - name: Статус выполнения
         if: always()
         run: echo "Бот выполнил работу в ${{ job.status }}"
