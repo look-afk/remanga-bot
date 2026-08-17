@@ -27,11 +27,9 @@ def human_sleep(min_sec=2, max_sec=4):
 
 def get_cookies_path():
     """Возвращает путь к cookies.txt, работает как локально, так и на GitHub Actions"""
-    # Сначала проверяем переменную окружения (для GitHub Actions)
     if 'GITHUB_WORKSPACE' in os.environ:
         cookies_path = Path(os.environ['GITHUB_WORKSPACE']) / 'test' / 'cookies.txt'
     else:
-        # Локальный путь (относительно места запуска скрипта)
         cookies_path = Path(__file__).parent / 'cookies.txt'
     
     return str(cookies_path)
@@ -64,14 +62,14 @@ def parse_netscape_cookies(file_path):
 
 def run_dungeon_bot():
     timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
-    print(f"\n[{timestamp}] Запуск запланированной задачи фарма катакомб...")
+    print(f"\n[{timestamp}] Запуск задачи фарма катакомб...")
     send_telegram_message(f"🤖 Бот начал работу! ⏰ {timestamp}")
     
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         context = browser.new_context()
 
-        # Загружаем куки (работает как локально, так и на GitHub Actions)
+        # Загружаем куки
         try:
             cookies_path = get_cookies_path()
             netscape_cookies = parse_netscape_cookies(cookies_path)
@@ -159,34 +157,12 @@ def run_dungeon_bot():
         browser.close()
         send_telegram_message(f"✅ Фарм завершен! Циклов: {run_count}")
 
-def schedule_job():
-    """Выбирает случайный час из [13, 14, 15] и ставит задачу на этот час"""
-    chosen_hour = random.choice([13, 14, 15])
-    # Форматируем время в строку вида "13:00", "14:00" или "15:00"
-    time_str = f"{chosen_hour:02d}:00"
-    
-    print(f"Сегодня бот запустится в обед в {time_str}")
-    
-    # Очищаем старые задачи и назначаем новую на сегодня
-    schedule.clear()
-    schedule.every().day.at(time_str).do(job_wrapper)
-
-def job_wrapper():
-    run_dungeon_bot()
-    # После выполнения переназначаем время на следующий день
-    schedule_job()
-
 if __name__ == "__main__":
-    # На GitHub Actions запускаем один раз и выходим
+    # На GitHub Actions или при прямом вызове запускаем один раз
     if 'GITHUB_ACTIONS' in os.environ:
         print("[GitHub Actions] Запуск бота один раз...")
         run_dungeon_bot()
     else:
-        # Локально - используем планировщик
-        print("Бот-планировщик запущен и ждет обеденного времени...")
-        schedule_job()
-
-        # Бесконечный цикл проверки расписания
-        while True:
-            schedule.run_pending()
-            time.sleep(60)  # Проверяю каждую минуту, настало ли время
+        # Локально запускаем фарм сразу (либо можете вернуть schedule, если нужно)
+        print("[Локальный запуск] Запуск бота...")
+        run_dungeon_bot()
