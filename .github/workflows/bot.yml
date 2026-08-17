@@ -38,9 +38,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       
-      # 5. Установка браузеров Playwright вместе с системными библиотеками Linux
+      # 5. Исправление зависимостей Ubuntu 24.04 и установка Playwright
       - name: Установка браузеров Playwright
-        run: playwright install --with-deps chromium
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2t64 || true
+          playwright install --with-deps chromium
       
       # 6. Создание cookies.txt из GitHub Secrets
       - name: Создание cookies.txt
