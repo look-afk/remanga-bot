@@ -12,7 +12,7 @@ def send_telegram_message(message):
     chat_id = os.getenv('TELEGRAM_CHAT_ID')
     
     if not token or not chat_id:
-        return  # Если нет токена/chat_id, пропускаем
+        return
     
     try:
         url = f"https://api.telegram.org/bot{token}/sendMessage"
@@ -93,7 +93,7 @@ def run_dungeon_bot():
             browser.close()
             return
         
-        # Закрываем всплывающее окно / баннер по точечному селектору
+        # Закрываем всплывающее окно / рекламу
         try:
             close_btn = page.locator('button[aria-label="Закрыть"]')
             if close_btn.is_visible(timeout=5000):
@@ -109,12 +109,19 @@ def run_dungeon_bot():
             try:
                 print(f"--- Запуск цикла прохода №{run_count} ---")
                 
-                # Увеличили таймаут до 20 секунд на случай долгой прогрузки маркеров
-                page.wait_for_selector('div[data-sentry-component="MarkerPin"]', timeout=20000)
-                markers = page.locator('div[data-sentry-component="MarkerPin"]')
+                # Ищем маркеры по классу font-kanji (как на вашем скриншоте)
+                marker_selector = 'span.font-kanji'
+                page.wait_for_selector(marker_selector, timeout=20000)
+                markers = page.locator(marker_selector)
                 
-                if markers.count() > 3:
+                count = markers.count()
+                print(f"Найдено маркеров на карте: {count}")
+                
+                if count > 3:
+                    # Кликаем на 4-й маркер (или можно кликнуть .first, если нужен первый)
                     markers.nth(3).click()
+                elif count > 0:
+                    markers.first.click()
                 else:
                     print("Маркеры на карте не найдены.")
                     break 
@@ -153,6 +160,11 @@ def run_dungeon_bot():
                 
             except Exception as e:
                 print(f"Ошибка в цикле: {e}")
+                try:
+                    page.screenshot(path="error_screenshot.png")
+                    print("Скриншот экрана сохранен.")
+                except:
+                    pass
                 break
 
         print("Фарм завершен. Закрываю браузер.")
