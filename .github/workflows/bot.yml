@@ -1,10 +1,28 @@
-# 3. Установка зависимостей Python (ОСТАВЛЯЕМ КАК БЫЛО)
+name: Запуск бота по расписанию
+
+on:
+  schedule:
+    - cron: '0 10 * * *'
+  workflow_dispatch:
+
+jobs:
+  run_bot:
+    runs-on: ubuntu-22.04
+    
+    steps:
+      - name: Checkout кода
+        uses: actions/checkout@v4
+      
+      - name: Установка Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
       - name: Установка зависимостей
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       
-      # --- ДОБАВЛЯЕМ КЭШИРОВАНИЕ БРАУЗЕРА ---
       - name: Кэширование Playwright
         uses: actions/cache@v4
         id: playwright-cache
@@ -14,11 +32,35 @@
           restore-keys: |
             ${{ runner.os }}-playwright-
             
-      # 4. Установка браузера Playwright (качаем только если нет в кэше)
-      - name: Установка браузеров Playwright
+      - name: Установка браузера Chromium
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: playwright install chromium
         
-      # Установка системных библиотек (шрифты и т.д. - это быстро)
       - name: Установка системных зависимостей
         run: playwright install-deps chromium
+      
+      - name: Создание cookies.txt
+        env:
+          COOKIES_CONTENT: ${{ secrets.COOKIES_TXT }}
+        run: |
+          mkdir -p test
+          echo "$COOKIES_CONTENT" > test/cookies.txt
+      
+      - name: Запуск бота
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python test/bot.py
+
+      # --- ВОТ ЭТОТ ВАЖНЕЙШИЙ ШАГ ВЫГРУЗИТ КАРТИНКУ В АРТЕФАКТЫ ---
+      - name: Сохранить скриншот для проверки
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: debug-screenshot
+          path: error_screenshot.png
+          if-no-files-found: ignore
+      
+      - name: Статус выполнения
+        if: always()
+        run: echo "Бот выполнил работу в ${{ job.status }}"
