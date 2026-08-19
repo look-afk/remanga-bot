@@ -47,6 +47,15 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python test/bot.py
+
+      # --- ДОБАВЛЕННЫЙ ШАГ: СОХРАНЕНИЕ СКРИНШОТА ---
+      - name: Сохранить скриншот для проверки
+        uses: actions/upload-artifact@v4
+        if: always() # Этот параметр гарантирует, что скриншот сохранится, даже если бот выдал ошибку
+        with:
+          name: debug-screenshot
+          path: error_screenshot.png
+          if-no-files-found: ignore
       
       # 7. Логирование результата
       - name: Статус выполнения
