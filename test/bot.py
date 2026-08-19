@@ -4,6 +4,8 @@ import schedule
 import os
 from pathlib import Path
 from playwright.sync_api import sync_playwright
+# ИМПОРТ STEALTH ДЛЯ ОБХОДА ЗАЩИТЫ CLOUDFLARE
+from playwright_stealth import stealth_sync 
 import requests
 
 def send_telegram_message(message):
@@ -66,9 +68,13 @@ def run_dungeon_bot():
     send_telegram_message(f"🤖 Бот начал работу! ⏰ {timestamp}")
     
     with sync_playwright() as p:
-        # Для локального теста можно поставить headless=False, чтобы видеть браузер
         browser = p.chromium.launch(headless=True)
-        context = browser.new_context()
+        
+        # ДОБАВЛЕНО: Устанавливаем User-Agent и размер экрана как у обычного ПК
+        context = browser.new_context(
+            viewport={'width': 1920, 'height': 1080},
+            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        )
 
         # Загружаем куки
         try:
@@ -83,10 +89,19 @@ def run_dungeon_bot():
             return
 
         page = context.new_page()
+        
+        # ДОБАВЛЕНО: Включаем скрытность (Stealth) против Cloudflare
+        stealth_sync(page)
 
         try:
-            page.goto("https://remanga.org/murim-cards#/map", timeout=60000)
+            # wait_until="domcontentloaded" ускоряет загрузку
+            page.goto("https://remanga.org/murim-cards#/map", timeout=60000, wait_until="domcontentloaded")
             human_sleep(5, 7)
+            
+            # ДОБАВЛЕНО: Сохраняем скриншот сразу после загрузки страницы (для отладки)
+            page.screenshot(path="error_screenshot.png")
+            print("📸 Сделан контрольный скриншот загруженной страницы.")
+            
         except Exception as e:
             error_msg = f"❌ Не удалось открыть страницу: {e}"
             print(error_msg)
@@ -102,7 +117,7 @@ def run_dungeon_bot():
                 print("✅ Всплывающее окно успешно закрыто!")
                 human_sleep(2, 3)
         except Exception as e:
-            print(f"Всплывающее окно не найдено или уже закрыто: {e}")
+            print(f"Всплывающее окно не найдено или уже закрыто.")
 
         run_count = 1
         
@@ -177,7 +192,7 @@ def run_dungeon_bot():
                 print(f"❌ Ошибка в цикле: {e}")
                 try:
                     page.screenshot(path="error_screenshot.png")
-                    print("Скриншот экрана сохранен.")
+                    print("📸 Скриншот экрана с ошибкой сохранен.")
                 except:
                     pass
                 break
