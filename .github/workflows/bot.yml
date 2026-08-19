@@ -1,63 +1,24 @@
-name: Запуск бота по расписанию
-
-on:
-  # Запуск по расписанию (каждый день в 10:00 UTC)
-  schedule:
-    - cron: '0 10 * * *'
-  
-  # Ручной запуск через кнопку "Run workflow" на GitHub
-  workflow_dispatch:
-
-jobs:
-  run_bot:
-    runs-on: ubuntu-22.04
-    
-    steps:
-      # 1. Checkout кода из репозитория
-      - name: Checkout кода
-        uses: actions/checkout@v4
-      
-      # 2. Установка Python
-      - name: Установка Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-      
-      # 3. Установка зависимостей Python
+# 3. Установка зависимостей Python (ОСТАВЛЯЕМ КАК БЫЛО)
       - name: Установка зависимостей
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       
-      # 4. Установка браузера Playwright (на Ubuntu 22.04 пройдет без ошибок)
-      - name: Установка браузеров Playwright
-        run: playwright install --with-deps chromium
-      
-      # 5. Создание cookies.txt из GitHub Secrets
-      - name: Создание cookies.txt
-        env:
-          COOKIES_CONTENT: ${{ secrets.COOKIES_TXT }}
-        run: |
-          mkdir -p test
-          echo "$COOKIES_CONTENT" > test/cookies.txt
-      
-      # 6. Запуск бота
-      - name: Запуск бота
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python test/bot.py
-
-      # --- ДОБАВЛЕННЫЙ ШАГ: СОХРАНЕНИЕ СКРИНШОТА ---
-      - name: Сохранить скриншот для проверки
-        uses: actions/upload-artifact@v4
-        if: always() # Этот параметр гарантирует, что скриншот сохранится, даже если бот выдал ошибку
+      # --- ДОБАВЛЯЕМ КЭШИРОВАНИЕ БРАУЗЕРА ---
+      - name: Кэширование Playwright
+        uses: actions/cache@v4
+        id: playwright-cache
         with:
-          name: debug-screenshot
-          path: error_screenshot.png
-          if-no-files-found: ignore
-      
-      # 7. Логирование результата
-      - name: Статус выполнения
-        if: always()
-        run: echo "Бот выполнил работу в ${{ job.status }}"
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+            
+      # 4. Установка браузера Playwright (качаем только если нет в кэше)
+      - name: Установка браузеров Playwright
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: playwright install chromium
+        
+      # Установка системных библиотек (шрифты и т.д. - это быстро)
+      - name: Установка системных зависимостей
+        run: playwright install-deps chromium
