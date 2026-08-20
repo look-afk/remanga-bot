@@ -4,7 +4,7 @@ import schedule
 import os
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-# ИМПОРТ ОБНОВЛЕННОГО STEALTH (для обхода защиты)
+# Импорт обновленного Stealth (для обхода защиты)
 from playwright_stealth import Stealth 
 import requests
 
@@ -90,13 +90,13 @@ def run_dungeon_bot():
 
         page = context.new_page()
         
-        # ДОБАВЛЕНО: Включаем скрытность (Stealth) новым методом
+        # Включаем скрытность (Stealth) новым методом
         stealth = Stealth()
         stealth.apply_stealth_sync(page)
 
         try:
-            # wait_until="domcontentloaded" ускоряет загрузку
-            page.goto("https://remanga.org/murim-cards#/map", timeout=60000, wait_until="domcontentloaded")
+            # ИЗМЕНЕНО: Переходим на ЗЕРКАЛО сайта
+            page.goto("https://реманга.орг/murim-cards#/map", timeout=60000, wait_until="domcontentloaded")
             human_sleep(5, 7)
             
             # Сохраняем скриншот сразу после загрузки страницы (для отладки)
