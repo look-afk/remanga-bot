@@ -1,30 +1,83 @@
 import time
 import random
-import schedule
 import os
 import json
+import subprocess
+import sys
+import re
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 from playwright_stealth import Stealth 
 import requests
 
+# --- ЛОГИКА СОСТОЯНИЯ (STATE MACHINE) ---
+
+def get_current_date():
+    return time.strftime('%Y-%m-%d')
+
+def load_state():
+    """Загружает состояние фарма из файла state.json"""
+    default_state = {
+        "date": get_current_date(),
+        "status": "pending",
+        "runs_done": 0,
+        "target_runs": -1  # -1 значит, что мы еще не считали энергию сегодня
+    }
+    state_file = Path(__file__).parent / 'state.json'
+    
+    try:
+        if state_file.exists():
+            with open(state_file, 'r', encoding='utf-8') as f:
+                state = json.load(f)
+            # Если начался новый день - сбрасываем прогресс
+            if state.get("date") != get_current_date():
+                return default_state
+            return state
+    except Exception as e:
+        print(f"⚠️ Ошибка чтения state.json, начинаем с нуля: {e}")
+        
+    return default_state
+
+def save_and_push_state(state):
+    """Сохраняет состояние локально и пушит в GitHub"""
+    state_file = Path(__file__).parent / 'state.json'
+    
+    with open(state_file, 'w', encoding='utf-8') as f:
+        json.dump(state, f, indent=4)
+        
+    print(f"💾 Прогресс сохранен: {state['runs_done']} / {state['target_runs']} (Статус: {state['status']})")
+    
+    if 'GITHUB_ACTIONS' in os.environ:
+        try:
+            subprocess.run(['git', 'config', 'user.name', 'github-actions[bot]'], check=False)
+            subprocess.run(['git', 'config', 'user.email', 'github-actions[bot]@users.noreply.github.com'], check=False)
+            subprocess.run(['git', 'add', str(state_file)], check=True)
+            res = subprocess.run(['git', 'commit', '-m', f"🤖 Прогресс: {state['runs_done']}/{state['target_runs']} ({state['status']})"], capture_output=True)
+            
+            if res.returncode == 0:
+                subprocess.run(['git', 'pull', '--rebase'], check=False) # Подтягиваем изменения, если другой комп что-то запушил
+                subprocess.run(['git', 'push'], check=True)
+                print("☁️ Состояние успешно отправлено в GitHub!")
+        except Exception as e:
+            print(f"⚠️ Ошибка при отправке в GitHub: {e}")
+
+# --- БАЗОВЫЕ ФУНКЦИИ ---
+
 def send_telegram_message(message):
     token = os.getenv('TELEGRAM_BOT_TOKEN')
     chat_id = os.getenv('TELEGRAM_CHAT_ID')
-    if not token or not chat_id: return
-    try:
-        url = f"https://api.telegram.org/bot{token}/sendMessage"
-        requests.post(url, data={"chat_id": chat_id, "text": message}, timeout=10)
-    except: pass
+    if token and chat_id:
+        try:
+            requests.post(f"https://api.telegram.org/bot{token}/sendMessage", data={"chat_id": chat_id, "text": message}, timeout=10)
+        except: pass
 
 def human_sleep(min_sec=2, max_sec=4):
     time.sleep(random.uniform(min_sec, max_sec))
 
-def get_file_path(filename):
-    """Возвращает правильный путь к файлу (cookies.txt или proxies.json)"""
+def get_cookies_path():
     if 'GITHUB_WORKSPACE' in os.environ:
-        return str(Path(os.environ['GITHUB_WORKSPACE']) / 'test' / filename)
-    return str(Path(__file__).parent / filename)
+        return str(Path(os.environ['GITHUB_WORKSPACE']) / 'test' / 'cookies.txt')
+    return str(Path(__file__).parent / 'cookies.txt')
 
 def parse_netscape_cookies(file_path):
     cookies = []
@@ -35,233 +88,104 @@ def parse_netscape_cookies(file_path):
             if not line or line.startswith("#"): continue
             parts = line.split("\t")
             if len(parts) >= 7:
-                domain, flag, path, secure, expiration, name, value = parts[:7]
-                cookie = {
-                    "name": name, "value": value, "domain": domain, "path": path,
-                    "secure": secure.upper() == "TRUE", "httpOnly": False,
-                    "expires": int(expiration) if expiration.isdigit() else None
-                }
-                cookie = {k: v for k, v in cookie.items() if v is not None}
-                cookies.append(cookie)
+                cookies.append({
+                    "name": parts[5], "value": parts[6], "domain": parts[0], "path": parts[2],
+                    "secure": parts[3].upper() == "TRUE", "httpOnly": False,
+                    "expires": int(parts[4]) if parts[4].isdigit() else None
+                })
     return cookies
 
-def load_proxies(proxies_path):
-    """
-    Устойчивая загрузка proxies.json.
-    Поддерживает:
-      - обычный JSON-массив: [ {...}, {...} ]
-      - JSON Lines (по одному объекту на строку): {...}\n{...}\n...
-      - пустой/битый файл -> вернёт [] вместо падения всего скрипта
-    """
-    if not os.path.exists(proxies_path):
-        return []
-
-    with open(proxies_path, 'r', encoding='utf-8') as f:
-        raw = f.read().strip()
-
-    if not raw:
-        print("⚠️ proxies.json пустой.")
-        return []
-
-    # 1) Пробуем как обычный JSON (массив или один объект)
-    try:
-        data = json.loads(raw)
-        if isinstance(data, dict):
-            data = [data]
-        if isinstance(data, list):
-            return data
-        print(f"⚠️ Неожиданный формат JSON в proxies.json: {type(data)}")
-        return []
-    except json.JSONDecodeError as e:
-        print(f"⚠️ proxies.json не является валидным JSON-массивом ({e}). Пробую построчный разбор (JSONL)...")
-
-    # 2) Фоллбэк: JSON Lines — по одному объекту на строку
-    proxies = []
-    for i, line in enumerate(raw.splitlines(), start=1):
-        line = line.strip().rstrip(',')  # на случай запятых в конце строк
-        if not line:
-            continue
-        try:
-            obj = json.loads(line)
-            if isinstance(obj, list):
-                proxies.extend(obj)
-            else:
-                proxies.append(obj)
-        except json.JSONDecodeError:
-            print(f"❌ Пропускаю битую строку {i} в proxies.json: {line[:80]!r}")
-
-    if not proxies:
-        print("❌ Не удалось извлечь ни одного прокси из proxies.json.")
-    else:
-        print(f"✅ Восстановлено {len(proxies)} прокси построчным разбором.")
-
-    return proxies
-
-def setup_browser_with_proxy(p, is_github):
-    """Умный запуск браузера с перебором прокси (если нужно)"""
-    user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    
-    # ЕСЛИ ЗАПУСК ЛОКАЛЬНЫЙ (НА ПК) - ПРОКСИ НЕ НУЖНЫ
-    if not is_github:
-        print("💻 Локальный запуск: прокси отключены, браузер видимый.")
-        browser = p.chromium.launch(headless=False)
-        context = browser.new_context(viewport={'width': 1920, 'height': 1080}, user_agent=user_agent)
-        return browser, context, context.new_page()
-
-    # ЕСЛИ ЗАПУСК НА GITHUB - ИЩЕМ РАБОЧИЙ ПРОКСИ
-    print("☁️ Запуск на GitHub: начинаю перебор прокси...")
-    proxies_path = get_file_path('proxies.json')
-
-    proxies_list = load_proxies(proxies_path)
-
-    if not proxies_list:
-        print("❌ Рабочих прокси не найдено (файл отсутствует/пуст/битый). Запускаю без прокси (скорее всего будет ошибка 403).")
-        browser = p.chromium.launch(headless=True)
-        context = browser.new_context(viewport={'width': 1920, 'height': 1080}, user_agent=user_agent)
-        return browser, context, context.new_page()
-
-    random.shuffle(proxies_list)
-    print(f"🔍 Загружено прокси для проверки: {len(proxies_list)}")
-
-    # Начинаем перебор
-    for proxy_data in proxies_list:
-        try:
-            proxy_server = f"http://{proxy_data['ip_address']}:{proxy_data['port']}"
-        except (KeyError, TypeError):
-            print(f"❌ Пропускаю некорректную запись прокси: {proxy_data!r}")
-            continue
-
-        print(f"\n🔄 Тестирую прокси: {proxy_server}")
-        
-        browser = None
-        try:
-            browser = p.chromium.launch(
-                headless=True,
-                proxy={"server": proxy_server}
-            )
-            context = browser.new_context(viewport={'width': 1920, 'height': 1080}, user_agent=user_agent)
-            page = context.new_page()
-            
-            # Применяем анти-детект
-            stealth = Stealth()
-            stealth.apply_stealth_sync(page)
-
-            # Пытаемся зайти на сайт (даем прокси максимум 15 секунд на ответ)
-            response = page.goto("https://реманга.орг/murim-cards#/map", timeout=15000, wait_until="domcontentloaded")
-            
-            # Проверяем, не выдал ли сайт 403 ошибку
-            if response and response.status in [403, 502, 503, 504]:
-                print(f"❌ Прокси заблокирован сайтом (Статус: {response.status}). Ищу другой...")
-                browser.close()
-                continue
-            
-            # Проверяем текст на странице на случай хитрой блокировки
-            if page.locator('text="403"').is_visible(timeout=3000):
-                print(f"❌ Прокси выдал страницу 403 (VPN/СНГ блок). Ищу другой...")
-                browser.close()
-                continue
-
-            print(f"✅ ОТЛИЧНО! Найден рабочий прокси: {proxy_server}")
-            return browser, context, page
-
-        except Exception as e:
-            print(f"❌ Прокси не отвечает (Таймаут/Мертвый): {e}")
-            if browser is not None:
-                try: browser.close()
-                except: pass
-
-    print("🚨 ВСЕ ПРОКСИ ИЗ СПИСКА НЕ РАБОТАЮТ ИЛИ ЗАБЛОКИРОВАНЫ.")
-    return None, None, None
+# --- ОСНОВНАЯ ЛОГИКА ---
 
 def run_dungeon_bot():
-    timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
-    print(f"\n[{timestamp}] Запуск задачи фарма катакомб...")
+    print(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] Проверка состояния фарма...")
     
-    is_github = 'GITHUB_ACTIONS' in os.environ
+    state = load_state()
+    
+    if state["status"] == "done" or (state["target_runs"] != -1 and state["runs_done"] >= state["target_runs"]):
+        print(f"✅ На сегодня фарм уже завершен ({state['runs_done']}/{state['target_runs']})! Бот спит до завтра.")
+        if state["status"] != "done":
+            state["status"] = "done"
+            save_and_push_state(state)
+        sys.exit(0)
+        
+    print(f"🔄 Запуск! Сделано проходов: {state['runs_done']}. Цель: {state['target_runs'] if state['target_runs'] != -1 else 'Еще не рассчитана'}")
+    state["status"] = "in_progress"
     
     with sync_playwright() as p:
-        browser, context, page = setup_browser_with_proxy(p, is_github)
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context(viewport={'width': 1920, 'height': 1080}, user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+        page = context.new_page()
         
-        if not browser:
-            send_telegram_message("❌ Бот остановлен: не удалось найти рабочий прокси.")
-            return
-
         try:
-            # Загружаем куки (если есть) в рабочий контекст
-            cookies_path = get_file_path('cookies.txt')
-            netscape_cookies = parse_netscape_cookies(cookies_path)
-            if netscape_cookies:
-                context.add_cookies(netscape_cookies)
-                # Перезагружаем страницу с куками
-                page.goto("https://реманга.орг/murim-cards#/map", timeout=30000, wait_until="domcontentloaded")
-        except Exception as e:
-            print(f"Ошибка загрузки куки: {e}")
+            cookies = parse_netscape_cookies(get_cookies_path())
+            if cookies: context.add_cookies(cookies)
+        except Exception as e: print(f"Ошибка куки: {e}")
 
         stealth = Stealth()
         stealth.apply_stealth_sync(page)
 
         try:
-            human_sleep(3, 5)
+            page.goto("https://реманга.орг/murim-cards#/map", timeout=60000, wait_until="domcontentloaded")
+            human_sleep(4, 6)
             
-            # ==========================================
-            # АВТОМАТИЧЕСКАЯ АВТОРИЗАЦИЯ
-            # ==========================================
-            try:
-                login_btn = page.locator('text="Войти"').first
-                if login_btn.is_visible(timeout=5000):
-                    print("⚠️ Куки не сработали. Начинаю автоматический вход...")
-                    login_btn.click()
-                    human_sleep(2, 3)
-                    
-                    email_field = page.locator('input[type="text"], input[type="email"], input[name="username"]').first
-                    email_field.fill(os.getenv('REMANGA_EMAIL', ''))
-                    human_sleep(1, 2)
-                    
-                    pass_field = page.locator('input[type="password"]').first
-                    pass_field.fill(os.getenv('REMANGA_PASSWORD', ''))
-                    human_sleep(1, 2)
-                    
-                    submit_btn = page.locator('button[type="submit"], button:has-text("Войти")').last
-                    submit_btn.click()
-                    
-                    print("✅ Данные отправлены. Жду прогрузки аккаунта...")
-                    human_sleep(6, 8)
-                    page.goto("https://реманга.орг/murim-cards#/map", timeout=60000, wait_until="domcontentloaded")
-                    human_sleep(5, 7)
-            except Exception as login_err:
-                print("Окно входа не найдено. Похоже, мы уже авторизованы.")
-            # ==========================================
-
-            page.screenshot(path="error_screenshot.png")
-            print("📸 Сделан контрольный скриншот.")
-            
-        except Exception as e:
-            print(f"❌ Ошибка на этапе загрузки/входа: {e}")
-            browser.close()
-            return
-        
-        # Закрываем всплывающую рекламу
-        try:
-            close_btn = page.locator('button[aria-label="Закрыть"]')
-            if close_btn.is_visible(timeout=5000):
-                close_btn.click()
+            # АВТО-ВХОД
+            if page.locator('text="Войти"').first.is_visible(timeout=5000):
+                print("⚠️ Начинаю автоматический вход...")
+                page.locator('text="Войти"').first.click()
                 human_sleep(2, 3)
+                page.locator('input[type="text"], input[type="email"], input[name="username"]').first.fill("zavlatkamalov@gmail.com")
+                human_sleep(1, 2)
+                page.locator('input[type="password"]').first.fill("Zafarjon1224")
+                human_sleep(1, 2)
+                page.locator('button[type="submit"], button:has-text("Войти")').last.click()
+                human_sleep(6, 8)
+                page.goto("https://реманга.орг/murim-cards#/map", timeout=60000, wait_until="domcontentloaded")
+                human_sleep(4, 6)
+        except Exception as e:
+            print(f"❌ Ошибка входа: {e}")
+            return
+
+        try:
+            if page.locator('button[aria-label="Закрыть"]').is_visible(timeout=3000):
+                page.locator('button[aria-label="Закрыть"]').click()
         except: pass
 
-        run_count = 1
-        
-        while True:
+        # ВЫЧИСЛЕНИЕ ЭНЕРГИИ И МАКС. ПРОХОДОВ (Если еще не считали сегодня)
+        if state["target_runs"] == -1:
             try:
-                print(f"\n--- Запуск цикла прохода №{run_count} ---")
+                # Ищем на странице текст в формате "60 / 100" (любые цифры со слешем)
+                print("🔍 Ищу количество энергии на экране...")
+                energy_text = page.locator(':text-matches("^[0-9]+\\s*/\\s*[0-9]+$")').first.inner_text(timeout=5000)
+                current_energy = int(re.search(r'^(\d+)', energy_text.strip()).group(1))
                 
-                kanji_element = page.locator('span.font-kanji', has_text='寺')
-                kanji_element.first.wait_for(state="visible", timeout=20000)
+                # Математика: текущая энергия / 8
+                state["target_runs"] = current_energy // 8
+                print(f"🔋 Найдена энергия: {energy_text}. Запланировано проходов на сегодня: {state['target_runs']}")
                 
-                if kanji_element.count() > 0:
-                    kanji_element.first.click()
-                    print("✅ Кликнул по иероглифу 寺!")
+                if state["target_runs"] == 0:
+                    print("Энергии не хватает даже на 1 проход. Завершаю работу на сегодня.")
+                    state["status"] = "done"
+                    save_and_push_state(state)
+                    browser.close()
+                    return
+                    
+                save_and_push_state(state)
+            except Exception as e:
+                print("⚠️ Не удалось найти цифры энергии. Ставлю цель по умолчанию: 12 проходов.")
+                state["target_runs"] = 12
+
+        # ЦИКЛ ФАРМА (Крутим, пока не выполним норму target_runs)
+        while state["runs_done"] < state["target_runs"]:
+            try:
+                print(f"\n--- Запуск цикла прохода №{state['runs_done'] + 1} из {state['target_runs']} ---")
+                
+                kanji = page.locator('span.font-kanji', has_text='寺')
+                kanji.first.wait_for(state="visible", timeout=15000)
+                if kanji.count() > 0:
+                    kanji.first.click()
                 else:
-                    print("Иероглиф 寺 не найден. Возможно, закончилась энергия или сбой карты.")
+                    print("Иероглиф 寺 не найден.")
                     break 
                 
                 human_sleep(2, 3)
@@ -269,9 +193,10 @@ def run_dungeon_bot():
                 pass_button = page.locator('text=ПРОЙТИ СНОВА')
                 try:
                     pass_button.wait_for(state="visible", timeout=5000)
-                    is_disabled = pass_button.evaluate("node => node.disabled || node.getAttribute('aria-disabled') === 'true'")
-                    if is_disabled:
-                        print("Энергия закончилась! Кнопка заблокирована.")
+                    if pass_button.evaluate("node => node.disabled || node.getAttribute('aria-disabled') === 'true'"):
+                        print("🔴 ЭНЕРГИЯ ЗАКОНЧИЛАСЬ РАНЬШЕ ВРЕМЕНИ! (Возможно, сервер обновил данные).")
+                        state["status"] = "done"
+                        save_and_push_state(state)
                         break
                     pass_button.click()
                 except Exception as ex:
@@ -280,39 +205,39 @@ def run_dungeon_bot():
                 
                 human_sleep(2, 3)
 
-                try:
-                    battle_btn = page.locator('text=戰')
-                    battle_btn.wait_for(state="visible", timeout=5000)
-                    battle_btn.click()
-                    print("⚔️ Нажата кнопка боя (戰)!")
-                except Exception as ex:
-                    print(f"Кнопка боя (戰) не найдена: {ex}")
+                try: page.locator('text=戰').click(timeout=5000)
+                except: pass
                 
-                print("Жду завершения боя...")
+                print("Жду завершения боя (12-16 сек)...")
                 human_sleep(12, 16)
 
-                try:
-                    page.locator('text=К результатам').click(timeout=8000)
-                    print("✅ Нажато 'К результатам'")
+                try: page.locator('text=К результатам').click(timeout=8000)
                 except: break
-                
                 human_sleep(2, 3)
 
-                try:
-                    page.locator('button[data-sentry-source-file="pve-result-overlay.tsx"]').click(timeout=8000)
-                    print("✅ Возвращаемся на карту.")
+                try: page.locator('button[data-sentry-source-file="pve-result-overlay.tsx"]').click(timeout=8000)
                 except: break
                 
-                run_count += 1
+                # УВЕЛИЧИВАЕМ СЧЕТЧИК И СОХРАНЯЕМ ПРОГРЕСС!
+                state["runs_done"] += 1
+                print(f"✅ Цикл завершен. Прогресс: {state['runs_done']} / {state['target_runs']}")
+                
+                # Сохраняем после каждого успешного прохода, чтобы при падении ПК ничего не потерять
+                save_and_push_state(state)
+                
                 human_sleep(4, 6)
                 
             except Exception as e:
-                print(f"❌ Ошибка в цикле: {e}")
-                try: page.screenshot(path="error_screenshot.png")
-                except: pass
+                print(f"❌ Непредвиденная ошибка: {e}")
                 break
 
-        print("Фарм завершен. Закрываю браузер.")
+        if state["runs_done"] >= state["target_runs"]:
+            print("🎉 ВСЯ ЭНЕРГИЯ ИСТРАЧЕНА (ПЛАН ВЫПОЛНЕН)!")
+            state["status"] = "done"
+            save_and_push_state(state)
+            send_telegram_message(f"✅ Фарм окончен! Сделано {state['runs_done']} из {state['target_runs']} запланированных проходов.")
+
+        print("Закрываю браузер.")
         browser.close()
 
 if __name__ == "__main__":
