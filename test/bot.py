@@ -4,8 +4,8 @@ import schedule
 import os
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-# ИМПОРТ STEALTH ДЛЯ ОБХОДА ЗАЩИТЫ CLOUDFLARE
-from playwright_stealth import stealth_sync 
+# ИМПОРТ ОБНОВЛЕННОГО STEALTH (для обхода защиты)
+from playwright_stealth import Stealth 
 import requests
 
 def send_telegram_message(message):
@@ -70,7 +70,7 @@ def run_dungeon_bot():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         
-        # ДОБАВЛЕНО: Устанавливаем User-Agent и размер экрана как у обычного ПК
+        # Устанавливаем User-Agent и размер экрана как у обычного ПК
         context = browser.new_context(
             viewport={'width': 1920, 'height': 1080},
             user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
@@ -90,15 +90,16 @@ def run_dungeon_bot():
 
         page = context.new_page()
         
-        # ДОБАВЛЕНО: Включаем скрытность (Stealth) против Cloudflare
-        stealth_sync(page)
+        # ДОБАВЛЕНО: Включаем скрытность (Stealth) новым методом
+        stealth = Stealth()
+        stealth.apply_stealth_sync(page)
 
         try:
             # wait_until="domcontentloaded" ускоряет загрузку
             page.goto("https://remanga.org/murim-cards#/map", timeout=60000, wait_until="domcontentloaded")
             human_sleep(5, 7)
             
-            # ДОБАВЛЕНО: Сохраняем скриншот сразу после загрузки страницы (для отладки)
+            # Сохраняем скриншот сразу после загрузки страницы (для отладки)
             page.screenshot(path="error_screenshot.png")
             print("📸 Сделан контрольный скриншот загруженной страницы.")
             
