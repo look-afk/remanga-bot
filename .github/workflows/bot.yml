@@ -1,17 +1,29 @@
-name: Запуск бота по расписанию
+name: Распределенный Фарм (Self-Hosted)
 
 on:
+  # Запускаем каждые 20 минут. Подхватит любой включенный ПК.
   schedule:
-    - cron: '0 10 * * *'
+    - cron: '*/20 * * * *'
+  
   workflow_dispatch:
+
+# РАЗРЕШАЕМ ПУШИТЬ state.json В РЕПОЗИТОРИЙ
+permissions:
+  contents: write
 
 jobs:
   run_bot:
-    runs-on: ubuntu-22.04
+    # Запускаем на ваших домашних ПК, а не на серверах GitHub
+    runs-on: self-hosted
+    
+    # Защита от зависаний - рубим джобу через 15 минут, если комп повис
+    timeout-minutes: 15
     
     steps:
       - name: Checkout кода
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 
       
       - name: Установка Python
         uses: actions/setup-python@v4
@@ -29,19 +41,21 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ hashFiles('requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-playwright-
-            
+          
       - name: Установка браузера Chromium
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: playwright install chromium
         
-      - name: Установка системных зависимостей
+      # Системные зависимости нужны только для Linux. На Windows скрипт упадет, если попытается это сделать, поэтому тут условие.
+      - name: Установка системных зависимостей (только Linux)
+        if: runner.os != 'Windows'
         run: playwright install-deps chromium
       
+      # Создание куки
       - name: Создание cookies.txt
         env:
           COOKIES_CONTENT: ${{ secrets.COOKIES_TXT }}
+        shell: bash
         run: |
           mkdir -p test
           echo "$COOKIES_CONTENT" > test/cookies.txt
@@ -51,16 +65,3 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python test/bot.py
-
-      # --- ВОТ ЭТОТ ВАЖНЕЙШИЙ ШАГ ВЫГРУЗИТ КАРТИНКУ В АРТЕФАКТЫ ---
-      - name: Сохранить скриншот для проверки
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: debug-screenshot
-          path: error_screenshot.png
-          if-no-files-found: ignore
-      
-      - name: Статус выполнения
-        if: always()
-        run: echo "Бот выполнил работу в ${{ job.status }}"
