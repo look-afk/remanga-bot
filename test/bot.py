@@ -45,6 +45,58 @@ def parse_netscape_cookies(file_path):
                 cookies.append(cookie)
     return cookies
 
+def load_proxies(proxies_path):
+    """
+    Устойчивая загрузка proxies.json.
+    Поддерживает:
+      - обычный JSON-массив: [ {...}, {...} ]
+      - JSON Lines (по одному объекту на строку): {...}\n{...}\n...
+      - пустой/битый файл -> вернёт [] вместо падения всего скрипта
+    """
+    if not os.path.exists(proxies_path):
+        return []
+
+    with open(proxies_path, 'r', encoding='utf-8') as f:
+        raw = f.read().strip()
+
+    if not raw:
+        print("⚠️ proxies.json пустой.")
+        return []
+
+    # 1) Пробуем как обычный JSON (массив или один объект)
+    try:
+        data = json.loads(raw)
+        if isinstance(data, dict):
+            data = [data]
+        if isinstance(data, list):
+            return data
+        print(f"⚠️ Неожиданный формат JSON в proxies.json: {type(data)}")
+        return []
+    except json.JSONDecodeError as e:
+        print(f"⚠️ proxies.json не является валидным JSON-массивом ({e}). Пробую построчный разбор (JSONL)...")
+
+    # 2) Фоллбэк: JSON Lines — по одному объекту на строку
+    proxies = []
+    for i, line in enumerate(raw.splitlines(), start=1):
+        line = line.strip().rstrip(',')  # на случай запятых в конце строк
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+            if isinstance(obj, list):
+                proxies.extend(obj)
+            else:
+                proxies.append(obj)
+        except json.JSONDecodeError:
+            print(f"❌ Пропускаю битую строку {i} в proxies.json: {line[:80]!r}")
+
+    if not proxies:
+        print("❌ Не удалось извлечь ни одного прокси из proxies.json.")
+    else:
+        print(f"✅ Восстановлено {len(proxies)} прокси построчным разбором.")
+
+    return proxies
+
 def setup_browser_with_proxy(p, is_github):
     """Умный запуск браузера с перебором прокси (если нужно)"""
     user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
@@ -59,24 +111,29 @@ def setup_browser_with_proxy(p, is_github):
     # ЕСЛИ ЗАПУСК НА GITHUB - ИЩЕМ РАБОЧИЙ ПРОКСИ
     print("☁️ Запуск на GitHub: начинаю перебор прокси...")
     proxies_path = get_file_path('proxies.json')
-    
-    if not os.path.exists(proxies_path):
-        print("❌ Файл proxies.json не найден! Запускаю без прокси (скорее всего будет ошибка 403).")
+
+    proxies_list = load_proxies(proxies_path)
+
+    if not proxies_list:
+        print("❌ Рабочих прокси не найдено (файл отсутствует/пуст/битый). Запускаю без прокси (скорее всего будет ошибка 403).")
         browser = p.chromium.launch(headless=True)
         context = browser.new_context(viewport={'width': 1920, 'height': 1080}, user_agent=user_agent)
         return browser, context, context.new_page()
 
-    # Загружаем и перемешиваем прокси
-    with open(proxies_path, 'r') as f:
-        proxies_list = json.load(f)
     random.shuffle(proxies_list)
     print(f"🔍 Загружено прокси для проверки: {len(proxies_list)}")
 
     # Начинаем перебор
     for proxy_data in proxies_list:
-        proxy_server = f"http://{proxy_data['ip_address']}:{proxy_data['port']}"
+        try:
+            proxy_server = f"http://{proxy_data['ip_address']}:{proxy_data['port']}"
+        except (KeyError, TypeError):
+            print(f"❌ Пропускаю некорректную запись прокси: {proxy_data!r}")
+            continue
+
         print(f"\n🔄 Тестирую прокси: {proxy_server}")
         
+        browser = None
         try:
             browser = p.chromium.launch(
                 headless=True,
@@ -108,9 +165,10 @@ def setup_browser_with_proxy(p, is_github):
             return browser, context, page
 
         except Exception as e:
-            print(f"❌ Прокси не отвечает (Таймаут/Мертвый). Ищу другой...")
-            try: browser.close()
-            except: pass
+            print(f"❌ Прокси не отвечает (Таймаут/Мертвый): {e}")
+            if browser is not None:
+                try: browser.close()
+                except: pass
 
     print("🚨 ВСЕ ПРОКСИ ИЗ СПИСКА НЕ РАБОТАЮТ ИЛИ ЗАБЛОКИРОВАНЫ.")
     return None, None, None
@@ -156,11 +214,11 @@ def run_dungeon_bot():
                     human_sleep(2, 3)
                     
                     email_field = page.locator('input[type="text"], input[type="email"], input[name="username"]').first
-                    email_field.fill("zavlatkamalov@gmail.com")
+                    email_field.fill(os.getenv('REMANGA_EMAIL', ''))
                     human_sleep(1, 2)
                     
                     pass_field = page.locator('input[type="password"]').first
-                    pass_field.fill("Zafarjon1224")
+                    pass_field.fill(os.getenv('REMANGA_PASSWORD', ''))
                     human_sleep(1, 2)
                     
                     submit_btn = page.locator('button[type="submit"], button:has-text("Войти")').last
