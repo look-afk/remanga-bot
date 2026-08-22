@@ -4,7 +4,7 @@ on:
   schedule:
     # Запуск каждые 2 часа (по UTC)
     - cron: '0 */2 * * *'
-  workflow_dispatch: # Кнопка для ручного запуска в Actions
+  workflow_dispatch:
 
 jobs:
   run-bot:
@@ -39,10 +39,14 @@ jobs:
         run: |
           python test/bot.py
 
-      - name: Upload Screenshot on Finish / Error
+      - name: Upload Artifacts (Screenshots and Videos)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: bot-screenshot
-          path: "**/error_screenshot.png"
+          name: bot-results
+          path: |
+            test/error_screenshot.png
+            test/videos/
+            error_screenshot.png
+            videos/
           if-no-files-found: ignore
