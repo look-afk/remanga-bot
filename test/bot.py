@@ -127,7 +127,7 @@ def find_working_proxy():
     return None
 
 def setup_browser_with_proxy(p, is_github):
-    """Умный запуск браузера с подбором прокси"""
+    """Умный запуск браузера с подбором прокси и записью видео"""
     user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     
     browser_args = [
@@ -139,11 +139,21 @@ def setup_browser_with_proxy(p, is_github):
         '--disable-blink-features=AutomationControlled'
     ]
 
-    # 1. ЕСЛИ ЗАПУСК ЛОКАЛЬНЫЙ (НА ПК) - ПРОКСИ НЕ НУЖНЫ
+    video_dir = get_file_path("videos")
+    os.makedirs(video_dir, exist_ok=True)
+    
+    context_options = {
+        'viewport': {'width': 1280, 'height': 720},
+        'user_agent': user_agent,
+        'record_video_dir': video_dir,
+        'record_video_size': {'width': 1280, 'height': 720}
+    }
+
+    # 1. ЕСЛИ ЗАПУСК ЛОКАЛЬНЫЙ (НА ПК)
     if not is_github:
-        print("💻 Локальный запуск: прямой трафик, браузер видимый.")
+        print("💻 Локальный запуск: прямой трафик, браузер видимый + запись видео.")
         browser = p.chromium.launch(headless=False, args=browser_args)
-        context = browser.new_context(viewport={'width': 1920, 'height': 1080}, user_agent=user_agent)
+        context = browser.new_context(**context_options)
         page = context.new_page()
         stealth = Stealth()
         stealth.apply_stealth_sync(page)
@@ -152,9 +162,9 @@ def setup_browser_with_proxy(p, is_github):
     # 2. ЕСЛИ ЗАДАН КАСТОМНЫЙ ПРОКСИ В СЕКРЕТАХ
     custom_proxy = os.getenv('CUSTOM_PROXY') or os.getenv('PROXY_URL')
     if custom_proxy:
-        print(f"🔑 Использую проверенный прокси из секретов: {custom_proxy}")
+        print(f"🔑 Использую проверенный прокси из секретов: {custom_proxy} (включена видеозапись)")
         browser = p.chromium.launch(headless=True, proxy={"server": custom_proxy}, args=browser_args)
-        context = browser.new_context(viewport={'width': 1920, 'height': 1080}, user_agent=user_agent)
+        context = browser.new_context(**context_options)
         page = context.new_page()
         stealth = Stealth()
         stealth.apply_stealth_sync(page)
@@ -171,7 +181,7 @@ def setup_browser_with_proxy(p, is_github):
                     server = f"http://{p_data['ip_address']}:{p_data['port']}"
                     try:
                         b = p.chromium.launch(headless=True, proxy={"server": server}, args=browser_args)
-                        ctx = b.new_context(viewport={'width': 1920, 'height': 1080}, user_agent=user_agent)
+                        ctx = b.new_context(**context_options)
                         pg = ctx.new_page()
                         resp = pg.goto(TARGET_URL, timeout=15000, wait_until="commit")
                         if resp and resp.status in [200, 301, 302]:
@@ -190,7 +200,7 @@ def setup_browser_with_proxy(p, is_github):
     if working_proxy:
         try:
             browser = p.chromium.launch(headless=True, proxy={"server": working_proxy}, args=browser_args)
-            context = browser.new_context(viewport={'width': 1920, 'height': 1080}, user_agent=user_agent)
+            context = browser.new_context(**context_options)
             page = context.new_page()
             stealth = Stealth()
             stealth.apply_stealth_sync(page)
@@ -201,7 +211,7 @@ def setup_browser_with_proxy(p, is_github):
     # 5. ЕСЛИ ПРОКСИ НЕ НАЙДЕН - ПРОБУЕМ НАПРЯМУЮ
     print("⚠️ Прокси не найден. Запуск напрямую...")
     browser = p.chromium.launch(headless=True, args=browser_args)
-    context = browser.new_context(viewport={'width': 1920, 'height': 1080}, user_agent=user_agent)
+    context = browser.new_context(**context_options)
     page = context.new_page()
     stealth = Stealth()
     stealth.apply_stealth_sync(page)
@@ -396,7 +406,13 @@ def run_dungeon_bot():
                 safe_screenshot(page, "error_screenshot.png")
                 break
 
-        print("Фарм завершен. Закрываю браузер.")
+        print("Фарм завершен. Сохраняю видеозапись...")
+        try:
+            page.close()
+            context.close()
+            print("🎬 Видеозапись успешно сохранена в папку videos/")
+        except Exception:
+            pass
         browser.close()
 
 if __name__ == "__main__":
