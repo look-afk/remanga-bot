@@ -217,10 +217,11 @@ def setup_browser_with_proxy(p, is_github):
     stealth.apply_stealth_sync(page)
     return browser, context, page
 
-def safe_screenshot(page, path="error_screenshot.png"):
+def safe_screenshot(page, filename="error_screenshot.png"):
     """Безопасный скриншот без зависаний на шрифтах"""
     try:
-        page.screenshot(path=path, timeout=5000, animations="disabled")
+        target_path = get_file_path(filename)
+        page.screenshot(path=target_path, timeout=5000, animations="disabled")
     except Exception:
         pass
 
@@ -312,20 +313,23 @@ def run_dungeon_bot():
                 context.add_cookies(netscape_cookies)
                 print("🍪 Куки успешно загружены.")
             
-            # Переходим на страницу (commit не ждет тяжелые картинки/шрифты)
+            # Переходим на страницу
             print(f"🔗 Переход на {TARGET_URL}...")
-            resp = page.goto(TARGET_URL, timeout=60000, wait_until="commit")
+            resp = page.goto(TARGET_URL, timeout=60000, wait_until="domcontentloaded")
             
             if resp and resp.status in [403, 502, 503]:
                 print(f"❌ Доступ заблокирован сайтом (HTTP {resp.status}). Нужен СНГ/Европа IP!")
                 send_telegram_message(f"❌ Ошибка доступа: HTTP {resp.status}.")
+                try:
+                    page.close()
+                    context.close()
+                except Exception:
+                    pass
                 browser.close()
                 return
 
-            try:
-                page.wait_for_load_state("domcontentloaded", timeout=15000)
-            except Exception:
-                pass
+            print("⏳ Ожидаю прорисовку интерфейса...")
+            human_sleep(5, 7)
 
         except Exception as e:
             print(f"Предупреждение при загрузке: {e}")
