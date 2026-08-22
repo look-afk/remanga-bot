@@ -4,7 +4,7 @@ on:
   schedule:
     # Запуск каждые 2 часа (по UTC)
     - cron: '0 */2 * * *'
-  workflow_dispatch:
+  workflow_dispatch: # Кнопка для ручного запуска в Actions
 
 jobs:
   run-bot:
@@ -37,12 +37,12 @@ jobs:
           REMANGA_PASSWORD: ${{ secrets.REMANGA_PASSWORD }}
           RUN_HEADLESS: 'true'
         run: |
-          python bot.py
+          python test/bot.py
 
       - name: Upload Screenshot on Finish / Error
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: bot-screenshot
-          path: error_screenshot.png
+          path: "**/error_screenshot.png"
           if-no-files-found: ignore
