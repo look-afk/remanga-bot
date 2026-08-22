@@ -1,67 +1,48 @@
-name: Распределенный Фарм (Self-Hosted)
+name: Remanga Dungeon Bot
 
 on:
-  # Запускаем каждые 20 минут. Подхватит любой включенный ПК.
   schedule:
-    - cron: '*/20 * * * *'
-  
+    # Запуск каждые 2 часа (по UTC)
+    - cron: '0 */2 * * *'
   workflow_dispatch:
 
-# РАЗРЕШАЕМ ПУШИТЬ state.json В РЕПОЗИТОРИЙ
-permissions:
-  contents: write
-
 jobs:
-  run_bot:
-    # Запускаем на ваших домашних ПК, а не на серверах GitHub
-    runs-on: self-hosted
-    
-    # Защита от зависаний - рубим джобу через 15 минут, если комп повис
-    timeout-minutes: 15
-    
+  run-bot:
+    runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout кода
+      - name: Checkout Code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 
-      
-      - name: Установка Python
-        uses: actions/setup-python@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      
-      - name: Установка зависимостей
+
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-      
-      - name: Кэширование Playwright
-        uses: actions/cache@v4
-        id: playwright-cache
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('requirements.txt') }}
-          
-      - name: Установка браузера Chromium
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: playwright install chromium
-        
-      # Системные зависимости нужны только для Linux. На Windows скрипт упадет, если попытается это сделать, поэтому тут условие.
-      - name: Установка системных зависимостей (только Linux)
-        if: runner.os != 'Windows'
-        run: playwright install-deps chromium
-      
-      # Создание куки
-      - name: Создание cookies.txt
-        env:
-          COOKIES_CONTENT: ${{ secrets.COOKIES_TXT }}
-        shell: bash
+          pip install playwright playwright-stealth requests schedule
+
+      - name: Install Playwright Chromium with system dependencies
         run: |
-          mkdir -p test
-          echo "$COOKIES_CONTENT" > test/cookies.txt
-      
-      - name: Запуск бота
+          playwright install chromium --with-deps
+
+      - name: Run Bot
         env:
+          CUSTOM_PROXY: ${{ secrets.CUSTOM_PROXY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python test/bot.py
+          REMANGA_EMAIL: ${{ secrets.REMANGA_EMAIL }}
+          REMANGA_PASSWORD: ${{ secrets.REMANGA_PASSWORD }}
+          RUN_HEADLESS: 'true'
+        run: |
+          python bot.py
+
+      - name: Upload Screenshot on Finish / Error
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bot-screenshot
+          path: error_screenshot.png
+          if-no-files-found: ignore
