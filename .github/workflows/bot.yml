@@ -1,52 +1,28 @@
-name: Remanga Dungeon Bot
+name: Run bot
 
 on:
-  schedule:
-    # Запуск каждые 2 часа (по UTC)
-    - cron: '0 */2 * * *'
   workflow_dispatch:
 
 jobs:
-  run-bot:
+  bot:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.12"
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install playwright playwright-stealth requests schedule
+        run: pip install requests
 
-      - name: Install Playwright Chromium with system dependencies
-        run: |
-          playwright install chromium --with-deps
-
-      - name: Run Bot
+      - name: Run bot
         env:
-          CUSTOM_PROXY: ${{ secrets.CUSTOM_PROXY }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           REMANGA_EMAIL: ${{ secrets.REMANGA_EMAIL }}
           REMANGA_PASSWORD: ${{ secrets.REMANGA_PASSWORD }}
-          RUN_HEADLESS: 'true'
-        run: |
-          python test/bot.py
-
-      - name: Upload Artifacts (Screenshots and Videos)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: bot-results
-          path: |
-            test/error_screenshot.png
-            test/videos/
-            error_screenshot.png
-            videos/
-          if-no-files-found: ignore
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          CUSTOM_PROXY: ${{ secrets.CUSTOM_PROXY }}
+        run: python botq.py
